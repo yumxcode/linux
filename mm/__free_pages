@@ -1,0 +1,61 @@
+__free_pages是一个基础函数，用于内核中所有释放的函数。其代码流程为：先看是否为单页，若是，则调用free_hot_page()，如果不是，调用__free_page_ok()
+再到__free_one_page()函数。__free_one_page()函数不光释放一个页，也释放多个页。
+
+其实释放页很简单，就是在相应的标识改一下，在相应的空闲链表中添加该页。但是，最重要的是页的合并。
+页的合并是循环进行的，一直到最高阶。
+ 
+首先介绍一下几个辅助函数：
+  1》潜在的伙伴地址：static inline struct page *__page_find_buddy(struct page *page,unsigned long page_idx,unsigned int order)
+                  {
+                     unsigned long buddy_idx=page_idx ^(1<<order);
+                     return page+(buddy_idx- page_idx);
+                  }
+                  //其中page_idx是相应阶对应页块的首页序号。（怎么计算?page_idx-(page_idx%2^oeder))。而buddy_idx，则是潜在的伙伴关系页块的
+                  //首页序号。
+                  //buddy_idx的计算原理？1左移order位，则2^order对应位置1，而page_idx，是对应的2^order页块的首页号，所以page_idx的2^order
+                  //对应位之后的位都为0，而对应位以及左边的位，要么1，要么0.所以这两个异或，则若对应位为0，则潜在伙伴为页块之后的页块，而对应位为
+                  /1，潜在伙伴为页块之前的页块。
+                  
+ 2》若合并则合并后的页块的索引：static inline unsigned long __find_conbined_index(unsigned long page_idx,unsigned long order)
+                       {
+                          return (page_idx & ~(1<<order));
+                       }
+                   //这是返回合并后页块的首页号。
+                   //它的工作原理？我感觉如果传入的order是将合并后的order，如0阶时传入1，那么就不用取反符号，直接与就行。这里我看不懂？
+                   
+ 3》找到伙伴页索引后，还应判断是否所有的页都空闲：static inline int page_is_buddy(struct page *page,struct page *buddy,int orfer)
+                                            {
+                                              ...
+                                               if(PageBuddy(buddy)&&page_order(buddy)==order)
+                                                 return 1
+                                               return 0;
+                                            }
+                                            //具体实现还没找到。
+                                     
+  准备工作完成后，进入free_one_page()的主体：
+  
+    static inline void __free_one_page(struct page *page, struct zone *zone,unsigned long order)
+    {
+       int migratetype=get_pageblock_migratetype(page); //找到对应的迁移类型。
+       while(order<MAX_ORDER-1)
+       {
+          unsigned long combined_idx;
+          struct page *buddy;
+          buddy=__page_find_buddy(page,page_idx,order); //找到伙伴
+          if(!page_is_buddy(page,buddy,order))          //判断伙伴中的页是否都空闲
+             break;   //向上移动一级。
+          list_del(&buddy->lru);                        //  把buddy从维护的active_list中删除
+          zone->free_area[order].nr_free--;             //  相应阶的总空闲页块总数减1
+          rmv_page_order(buddy ；                       // 清除pG_buddy标识和private
+          combined_idx=__find_combined_idx(page_idx,order);   //计算合并后的索引
+          page=page+(combined_idx-page_idx);                  //page指向新的起始地址
+          page_idx=combined_idx;
+          order++;
+          
+       }
+       set_page_order(page,order);
+       lsit_add(&page_lru,&zone->free_area[order].freelist[migratetype]);//将新page添加到维护的列表中。
+l       zone->free_area[order].nr_free++;
+    
+    
+    }
