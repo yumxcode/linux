@@ -1,0 +1,34 @@
+linux用page结构体来描述页框。先看page的定义
+ struct page {
+   unsigned long flags;
+   atomic_t  __count;  //用作引用计数。
+   union {
+      atomic_t _mapcount; //内存管理子系统的映射的页表项计数，用于页是否已经映射，还用于限制逆向映射搜索。
+      unsigned int inuse; //用于slub分配器：对象的数目。
+   }；
+   union {
+     struct {
+       unsigned long private; //由映射私有，不透明数据；如果设置了PagePrivate,通常用于buffer_heads
+                              //如果设置了page_swapCache,则用于swp_entry_t
+                              //如果设置了PG_buddy,则表示伙伴系统中的阶。
+       struct adress_space *mapping;
+     };
+     struct kmem_cache *slab; //用于slab分配器，指向slab的指针。
+     struct page *firstpage;   //用于复合页的尾页，指向首页。
+   };
+   union {
+   
+     pgoff_t index; //在映射内的偏移量。
+     void *freelist;  //slub:freelist req
+   };
+   struct lsit_head lru; //换出页列表，由zone->lru_lock保护的active_list;
+#if defined(WANT_PAGE_VIRTUAL)
+     void *virtual;  //内核虚拟地址。
+#endif
+
+ 
+ }
+ 
+ 解释下各项用途：
+         __count :用于引用计数，如果引用计数为0，则说明该页不再使用，内核会删除该页。
+         _mapcount:记录有多少表项指向该页。
