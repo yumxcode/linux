@@ -1,0 +1,81 @@
+vmalloc函数用于非连续内存的分配，在虚拟地址空间中，就是在直接映射之后的vmalloc区域。前896m是常规内存区，也叫线形内存区，直接映射区。
+vmalloc的工作原理，分为三步，首先，vmalloc先检查vmalloc区域是否还有空间，若有，则分配物理内存页，最后在建立映射表。
+每一个vmalloc分配的区域，都是vmalloc区域的自区域，各个自区域之间有一页隔开。
+
+子区域结构：
+   struct vm_struct{
+    struct vm_struct *next;  //所有的vm_struct连成一个链表。
+    void    *addr;           //子区域的起始地址。
+    unsigned long size;      //自区域大小。
+    unsigned long flags;     //内存区关联的标识集合，暂不讨论。
+    struct page  **page;      //指向一个page数组，存储自区域对应的物理页表。
+    unsigned int   nr_pages;  //物理页表数目。
+    unsigned long   phys_addr;  //暂不讨论。
+   }
+  
+ 所有的vm_area,也就是vm_struct对应的子区域，都维护在一个全局链表 *vmlist中。 
+ 
+第一步：检查vmlloc虚拟区域是否还有空间：
+              struct vm_struct *__get_vm_area_node(unsigned long size,unsigned long flags,unsigned long start,unsigned long end,int node)
+              {
+                //前端函数定义了 addr ,size.
+                struct vm_struct **p, *tmp,*area;
+                size=PAGE_ALIGN(size);
+                //总是多分配一个页/
+                size+=PAGE_SIZE;
+                //遍历所有vmlist链表元素，检查是否还有合适区域
+                for(p=&vmlist;(tmp=*p)!=NULL;p=&tmp->next)
+                {
+                  if((unsigned long)tmp->addr<addr)   //检查的子内存区首地址小于想要分配的首地址
+                    {
+                     if((unsigned long)tmp->addr+tmp->size>=addr)
+                       addr=ALIGN(tmp->size+(unsigned long)tmp->addr,align); //调整addr的大小。
+                     continue;
+                    }
+                    if((size+addr)<addr) //这一行看不懂，size可能是负的？
+                      goto out;
+                    if(size+addr<=(unsigned long)tmp->addr)   //找到了合适的区域在两个子内存区中间。
+                      goto found;
+                    addr=ALIGN(tmp->size+(unsigned long)tmp->addr,align); //调整addr大小。
+                    if(addr>end-size)
+                      goto out;
+                      
+                }
+              found:                                                  //找到合适的区域后，初始化链表元素。
+                  area->next=*p;
+                  *p=area;
+                  area->flags=flags;
+                  area->addr=(void *)addr;
+                  area->size=size;
+                  area->pages=null;
+                  area->nr_pages=0;
+                  area->phys_addr=0;
+                  return area;
+                  ....
+                
+              }
+      
+    为找好的内存域分配物理页：
+        void *__vmalloc_area_node(struct vm_struct *arae, gft_t gfp_mask, pgprot_t pgrot,int node)
+        {
+         for(i=0;i<area->nr_pages;i++)
+         {
+           if(node<0)
+             area->pages[i]=alloc_page(gfp_mask);
+           else
+             area->pages[i]=alloc_page_node(node,gfp_mask,0);
+         }
+        if(map_vm_area(area,pgrot,&pages))    //建立映射表。
+          goto fail;
+        return area->addr;
+        }
+    
+    注意:这里在调用伙伴关系分配函数时，gfp_mask被设置为GFP_KERNEK | GFP_HIGNMEM 这会优先在高端内存区分配。
+    
+    
+    
+    
+    
+    
+    
+    
