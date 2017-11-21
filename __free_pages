@@ -1,0 +1,4 @@
+__free_pages是一个基础函数，用于内核中所有释放的函数。其代码流程为：先看是否为单页，若是，则调用free_hot_page()，如果不是，调用__free_page_ok()
+再到__free_one_page()函数。
+
+    
