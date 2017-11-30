@@ -1,0 +1,26 @@
+mm_struct用来描述用户的虚拟空间0-3G的那部分。一个用户进程虚拟空间，由许多的段组成，如test段，data段，等等，以及一些函数调用的栈，用于分配内存的堆
+，很多边界常量都是特定于体系结构的，需要专门配置。这些配置，都是由mm_struct管理的。
+
+struct mm_struct{
+  //此函数用于寻找空闲的空间，用于映射 
+  unsigned long (*get_unmapped_area) (struct file *file,unsigned long addr,unsigned long len,unsigned long pgoff,unsigned long flags)
+  unsigned long mmap_base;  //mmap区域的起始地址，用于虚拟映射
+  unsigned long task_size;   //进程虚拟内存空间的长度
+  unsigned long start_code,end_code,start_data,end_data;   //边界常量 一般是不可改变
+  unsigned long start_brk,brk,start_stact;  //堆的起始地址，一般起始地址不变，但是堆长度可变，所以brk是可变的。
+  unsigned long arg_start,arg_end,env_start,env_end;  //这应该是栈中用于传递的变量，以及环境的配置 ，都位于栈中最高的区域。
+}
+
+此外，大体上的进程用户空间分布，分为两种，一种是mmap区域自下而上增长，一种是mmap区域自上而下增长。
+布局为：
+    task_size                                        
+    栈（向下增长）
+    ..
+    ...
+    mmap（向上）增长
+    ..
+    ...
+    brk(向上)增长
+    tesk等字段
+    这是自下而上增长，自上而下增长是mmap区域，上下增长，和brk碰头。
+    
