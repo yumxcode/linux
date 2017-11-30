@@ -1,0 +1,40 @@
+为什么有内存映射呢？每个用户空间的理论大小是3G,但是如果真的是3G的话，那么物理空间仅仅能容纳一个进程（32位）。所以，内核只是将关键部分映射到进程的用
+户空间，这需要一系列的数据结构，来维护。
+
+在前面所述的mm_struct中，要增加几个字段：
+struct mm_struct{
+..
+  struct vm_area_struct *mmap;   //虚拟内存区域列表，也就是前面所述的段，这个列表是线形表
+  struct rb_root mm_rb;           //上述段的内存区域列表是通过红黑树连接起来
+  struct vm_area_struct  *mmap_cache;  //上一次find_vma的结果，用于简化查询？？
+  }
+  
+  
+再来看用于表示段的vm_area_struct 数据结构：
+struct vm_area_struct{
+  struct mm_struct *vm_mm;     //反向映射，指向所属的用户空间。
+  unsigned long vm_start,vm_end;  //vm_mm的起始地址和结束地址
+  struct vm_area_struct *next;     //上述说要连成一个线形表，这是指针。
+  pgprot vm_page_prot;             //内存区域的访问权限。
+  unsigned long  vm_flags;            //标识
+  struct rb_node  vm_node;           //上述红黑树内存区域节点
+  
+  union{
+    struct {
+       struct list_head list;
+       void *parent;
+       struct vm_area_struct *head;
+    } vm_set;
+    struct raw_prio_tree_node prio_tree_node;
+  } shared;                                //这个联合结构也有点像反向映射，用来标记映射文件所有映射的内存区域
+                                           //之所以用联合，是因为有一些映射问文件区域是重合的，若重合就用vm_set，补充和就用树node.
+   struct list_head anon_vma_node;
+   struct anon_vma *anon_vma;                  //这两个后面再补充。
+   struct vm_operations_struct *vm_ops;            //处理该结构的各个函数的指针。
+   
+   /*后备存储器*/
+   unsigned long vm_pgoff;
+   struct file *vm_file;   //映射的文件
+   void * vm_private_date;    //共享内存
+
+}
